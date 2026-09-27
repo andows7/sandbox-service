@@ -6,5 +6,5 @@ import com.huixue.sandbox.domain.model.TestCase;
 import java.util.List;
 
 public interface ExecutorStrategy {
-    ExecutionResult execute(String executeTarget, String workDir, List<TestCase> testCases, ResourceLimit limit);
+    ExecutionResult execute(String executeTarget, String workDirHostPath, String containerId, List<TestCase> testCases, ResourceLimit limit);
 }

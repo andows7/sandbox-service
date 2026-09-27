@@ -89,12 +89,12 @@ public class SandboxExecutionService {
 
         PooledContainer container = null;
         try {
-            container = containerPool.borrowContainer(5000);
+            container = containerPool.borrowContainer(lang, 5000);
             if (container == null) {
                 throw new BizException(503, "评测服务繁忙，请稍后重试");
             }
 
-            CompileResult compileResult = compiler.compile(request.getCode(), container.getWorkDirHostPath());
+            CompileResult compileResult = compiler.compile(request.getCode(), container.getWorkDirHostPath(), container.getContainerId());
             
             SandboxExecuteResponse response = new SandboxExecuteResponse();
             if (!compileResult.isSuccess()) {
@@ -112,7 +112,7 @@ public class SandboxExecutionService {
             }).collect(Collectors.toList());
 
             ResourceLimit limit = new ResourceLimit(request.getTimeLimitMs(), request.getMemoryLimitMb());
-            ExecutionResult executionResult = executor.execute(compileResult.getExecuteTarget(), container.getWorkDirHostPath(), testCases, limit);
+            ExecutionResult executionResult = executor.execute(compileResult.getExecuteTarget(), container.getWorkDirHostPath(), container.getContainerId(), testCases, limit);
 
             response.setStatus(executionResult.getStatus());
             response.setExecutionTimeMs(executionResult.getExecutionTimeMs());

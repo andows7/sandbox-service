@@ -7,14 +7,17 @@ import com.huixue.sandbox.domain.model.ResourceLimit;
 import com.huixue.sandbox.domain.model.TestCase;
 import com.huixue.sandbox.domain.model.TestCaseResult;
 import com.huixue.sandbox.domain.strategy.ExecutorStrategy;
+import com.huixue.sandbox.infrastructure.docker.DockerContainerManager;
+import com.huixue.sandbox.infrastructure.docker.DockerExecResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.apache.commons.lang3.StringUtils;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileWriter;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,88 +25,70 @@ import java.util.regex.Pattern;
 @Component("javaExecutorStrategy")
 public class JavaExecutorStrategy implements ExecutorStrategy {
 
+    private final DockerContainerManager dockerContainerManager;
+
+    public JavaExecutorStrategy(DockerContainerManager dockerContainerManager) {
+        this.dockerContainerManager = dockerContainerManager;
+    }
+
     @Override
-    public ExecutionResult execute(String executeTarget, String workDir, List<TestCase> testCases, ResourceLimit limit) {
+    public ExecutionResult execute(String executeTarget, String workDirHostPath, String containerId, List<TestCase> testCases, ResourceLimit limit) {
         ExecutionResult executionResult = new ExecutionResult();
         List<TestCaseResult> caseResults = new ArrayList<>();
         long maxTimeMs = 0;
-        long maxMemoryMb = 0; // Local simulation cannot precisely measure memory.
+        long maxMemoryMb = 0;
 
-        for (TestCase tc : testCases) {
+        File dir = new File(workDirHostPath);
+
+        for (int i = 0; i < testCases.size(); i++) {
+            TestCase tc = testCases.get(i);
             TestCaseResult caseResult = new TestCaseResult();
+            
             try {
-                ProcessBuilder pb = new ProcessBuilder("java", "-Xmx" + limit.getMemoryLimitMb() + "m", executeTarget);
-                pb.directory(new File(workDir));
-                
-                long startTime = System.currentTimeMillis();
-                Process process = pb.start();
-
-                // STDIN
+                File inputFile = new File(dir, "input_" + i + ".txt");
                 if (StringUtils.isNotBlank(tc.getInput())) {
-                    try (OutputStreamWriter writer = new OutputStreamWriter(process.getOutputStream(), "UTF-8")) {
+                    try (FileWriter writer = new FileWriter(inputFile)) {
                         writer.write(tc.getInput());
-                        writer.flush();
                     }
+                } else {
+                    inputFile.createNewFile();
                 }
 
-                // STDOUT
-                StringBuilder output = new StringBuilder();
-                Thread outThread = new Thread(() -> {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8"))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            output.append(line).append("\n");
-                        }
-                    } catch (IOException e) {
-                        log.error("Error reading stdout", e);
-                    }
-                });
-                outThread.start();
+                String cmdStr = String.format("java -Xmx%dm %s < input_%d.txt > output_%d.txt 2> error_%d.txt", limit.getMemoryLimitMb(), executeTarget, i, i, i);
+                String[] cmd = {"sh", "-c", cmdStr};
 
-                // STDERR
-                StringBuilder error = new StringBuilder();
-                Thread errThread = new Thread(() -> {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream(), "UTF-8"))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            error.append(line).append("\n");
-                        }
-                    } catch (IOException e) {
-                        log.error("Error reading stderr", e);
-                    }
-                });
-                errThread.start();
+                DockerExecResult execResult = dockerContainerManager.execInContainer(containerId, cmd, limit.getTimeLimitMs());
+                
+                maxTimeMs = Math.max(maxTimeMs, execResult.getCostTimeMs());
 
-                boolean finished = process.waitFor(limit.getTimeLimitMs(), TimeUnit.MILLISECONDS);
-                long costTime = System.currentTimeMillis() - startTime;
-                maxTimeMs = Math.max(maxTimeMs, costTime);
-
-                if (!finished) {
-                    process.destroyForcibly();
-                }
-
-                outThread.join();
-                errThread.join();
-
-                if (!finished) {
+                if (execResult.isTimeout()) {
                     executionResult.setStatus(JudgeStatus.TLE);
                     caseResult.setPassed(false);
                     caseResults.add(caseResult);
                     break;
                 }
 
-                int exitValue = process.exitValue();
-                if (exitValue != 0) {
-                    executionResult.setStatus(JudgeStatus.RE);
-                    executionResult.setRuntimeError(PathSanitizer.sanitize(error.toString()));
-                    caseResult.setPassed(false);
-                    caseResult.setErrorLine(extractErrorLine(error.toString()));
-                    caseResults.add(caseResult);
-                    break; // Stop executing further cases
+                File errorFile = new File(dir, "error_" + i + ".txt");
+                String errorStr = "";
+                if (errorFile.exists()) {
+                    errorStr = Files.readString(errorFile.toPath()).trim();
                 }
 
-                // Compare output
-                String actualOutput = output.toString().trim();
+                if (execResult.getExitCode() != 0) {
+                    executionResult.setStatus(JudgeStatus.RE);
+                    executionResult.setRuntimeError(PathSanitizer.sanitize(errorStr));
+                    caseResult.setPassed(false);
+                    caseResult.setErrorLine(extractErrorLine(errorStr));
+                    caseResults.add(caseResult);
+                    break;
+                }
+
+                File outputFile = new File(dir, "output_" + i + ".txt");
+                String actualOutput = "";
+                if (outputFile.exists()) {
+                    actualOutput = Files.readString(outputFile.toPath()).trim();
+                }
+                
                 String expectedOutput = tc.getExpectedOutput() != null ? tc.getExpectedOutput().trim() : "";
                 caseResult.setActualOutput(actualOutput);
 
@@ -120,7 +105,7 @@ public class JavaExecutorStrategy implements ExecutorStrategy {
             } catch (Exception e) {
                 log.error("Execution process failed", e);
                 executionResult.setStatus(JudgeStatus.RE);
-                executionResult.setRuntimeError("系统错误：运行进程异常");
+                executionResult.setRuntimeError("Execution process failed");
                 caseResult.setPassed(false);
                 caseResults.add(caseResult);
                 break;

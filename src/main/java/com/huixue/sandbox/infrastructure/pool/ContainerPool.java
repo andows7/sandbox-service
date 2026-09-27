@@ -1,5 +1,6 @@
 package com.huixue.sandbox.infrastructure.pool;
 
+import com.huixue.sandbox.common.enums.LanguageType;
 import com.huixue.sandbox.config.DockerProperties;
 import com.huixue.sandbox.infrastructure.docker.DockerContainerManager;
 import com.huixue.sandbox.infrastructure.docker.DockerContainerSpec;
@@ -14,8 +15,10 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -24,8 +27,9 @@ public class ContainerPool {
     private final DockerContainerManager containerManager;
     private final DockerProperties dockerProperties;
     private final ContainerTaskMapper containerTaskMapper;
-    private BlockingQueue<PooledContainer> idlePool;
-    private final AtomicInteger totalContainers = new AtomicInteger(0);
+    
+    private final Map<LanguageType, BlockingQueue<PooledContainer>> idlePools = new ConcurrentHashMap<>();
+    private final Map<LanguageType, AtomicInteger> totalContainers = new ConcurrentHashMap<>();
 
     public ContainerPool(DockerContainerManager containerManager, DockerProperties dockerProperties, ContainerTaskMapper containerTaskMapper) {
         this.containerManager = containerManager;
@@ -35,47 +39,78 @@ public class ContainerPool {
 
     @PostConstruct
     public void init() {
-        int coreSize = dockerProperties.getPool().getCoreSize();
         int maxSize = dockerProperties.getPool().getMaxSize();
-        idlePool = new ArrayBlockingQueue<>(maxSize);
         
-        // Clear all tasks from previous run in DB (optional since MEMORY table clears on restart, but good for hot reload)
+        for (LanguageType lang : LanguageType.values()) {
+            idlePools.put(lang, new ArrayBlockingQueue<>(maxSize));
+            totalContainers.put(lang, new AtomicInteger(0));
+        }
+        
         containerTaskMapper.delete(null);
 
-        log.info("Initializing container pool. Prewarming {} containers...", coreSize);
-        for (int i = 0; i < coreSize; i++) {
-            replenishAsync();
+        int coreSize = dockerProperties.getPool().getCoreSize();
+        log.info("Initializing container pool. Prewarming {} containers per language...", coreSize);
+        for (LanguageType lang : LanguageType.values()) {
+            for (int i = 0; i < coreSize; i++) {
+                replenishAsync(lang);
+            }
         }
     }
 
-    public void replenishAsync() {
-        if (totalContainers.get() >= dockerProperties.getPool().getMaxSize()) {
+    public void replenishAsync(LanguageType lang) {
+        if (totalContainers.get(lang).get() >= dockerProperties.getPool().getMaxSize()) {
             return;
         }
-        totalContainers.incrementAndGet();
+        totalContainers.get(lang).incrementAndGet();
         new Thread(() -> {
             try {
-                PooledContainer container = createNewContainer();
-                idlePool.offer(container);
-                log.info("Replenished container: {}. Total containers: {}", container.getContainerId(), totalContainers.get());
+                PooledContainer container = createNewContainer(lang);
+                idlePools.get(lang).offer(container);
+                log.info("Replenished {} container: {}. Total {} containers: {}", lang, container.getContainerId(), lang, totalContainers.get(lang).get());
                 recordContainerTaskStatus(container.getContainerId(), PooledContainer.ContainerStatus.IDLE);
             } catch (Exception e) {
-                totalContainers.decrementAndGet();
-                log.error("Failed to replenish container", e);
+                totalContainers.get(lang).decrementAndGet();
+                log.error("Failed to replenish {} container", lang, e);
             }
         }).start();
     }
 
-    private PooledContainer createNewContainer() {
+    private PooledContainer createNewContainer(LanguageType lang) {
         String uuid = UUID.randomUUID().toString();
-        String hostWorkDir = System.getProperty("java.io.tmpdir") + File.separator + "sandbox_" + uuid;
+        String hostWorkDir = System.getProperty("user.dir") + File.separator + "sandbox_workdirs" + File.separator + uuid;
         File dir = new File(hostWorkDir);
         if (!dir.exists()) {
             dir.mkdirs();
         }
 
+        String image;
+        String buildDirName;
+        switch (lang) {
+            case JAVA:
+                image = "sandbox-java:1.0";
+                buildDirName = "java";
+                break;
+            case CPP:
+                image = "sandbox-cpp:1.0";
+                buildDirName = "cpp";
+                break;
+            case PYTHON:
+                image = "sandbox-python:1.0";
+                buildDirName = "python";
+                break;
+            default:
+                image = "ubuntu:22.04";
+                buildDirName = "";
+        }
+
+        String buildDirHostPath = "";
+        if (!buildDirName.isEmpty()) {
+            buildDirHostPath = System.getProperty("user.dir") + File.separator + "docker-env" + File.separator + buildDirName;
+        }
+
         DockerContainerSpec spec = DockerContainerSpec.builder()
-                .image("openjdk:17-jdk-slim")
+                .image(image)
+                .buildDirHostPath(buildDirHostPath)
                 .cpuCount(dockerProperties.getCpuCount())
                 .memoryLimitMb(dockerProperties.getMemoryMb())
                 .pidLimit(dockerProperties.getPidLimit())
@@ -91,18 +126,19 @@ public class ContainerPool {
         pc.setWorkDirHostPath(hostWorkDir);
         pc.setWorkDirContainerPath(spec.getWorkDirContainerPath());
         pc.setStatus(PooledContainer.ContainerStatus.IDLE);
+        pc.setLanguage(lang);
         return pc;
     }
 
-    public PooledContainer borrowContainer(long timeoutMs) throws InterruptedException {
-        PooledContainer container = idlePool.poll(timeoutMs, TimeUnit.MILLISECONDS);
+    public PooledContainer borrowContainer(LanguageType lang, long timeoutMs) throws InterruptedException {
+        PooledContainer container = idlePools.get(lang).poll(timeoutMs, TimeUnit.MILLISECONDS);
         if (container != null) {
             container.setStatus(PooledContainer.ContainerStatus.RUNNING);
             container.setAllocateTime(System.currentTimeMillis());
             recordContainerTaskStatus(container.getContainerId(), PooledContainer.ContainerStatus.RUNNING);
-            log.info("Borrowed container: {}", container.getContainerId());
+            log.info("Borrowed {} container: {}", lang, container.getContainerId());
         } else {
-            log.warn("Failed to borrow container within {} ms. Pool size: {}", timeoutMs, idlePool.size());
+            log.warn("Failed to borrow {} container within {} ms. Pool size: {}", lang, timeoutMs, idlePools.get(lang).size());
         }
         return container;
     }
@@ -110,6 +146,7 @@ public class ContainerPool {
     public void returnContainer(PooledContainer container) {
         if (container == null) return;
         
+        LanguageType lang = container.getLanguage();
         container.setStatus(PooledContainer.ContainerStatus.DEAD);
         recordContainerTaskStatus(container.getContainerId(), PooledContainer.ContainerStatus.DEAD);
         
@@ -119,8 +156,8 @@ public class ContainerPool {
                 containerManager.stopAndRemoveContainer(container.getContainerId());
                 cleanHostWorkDir(new File(container.getWorkDirHostPath()));
             } finally {
-                totalContainers.decrementAndGet();
-                replenishAsync();
+                totalContainers.get(lang).decrementAndGet();
+                replenishAsync(lang);
             }
         }).start();
     }

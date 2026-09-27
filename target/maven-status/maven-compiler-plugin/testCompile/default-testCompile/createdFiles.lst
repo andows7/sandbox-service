@@ -1,7 +1,0 @@
-com\huixue\sandbox\common\util\PathSanitizerTest.class
-com\huixue\sandbox\api\controller\SandboxControllerTest.class
-com\huixue\sandbox\infrastructure\pool\ContainerPoolTest.class
-com\huixue\sandbox\JavaStrategyTest.class
-com\huixue\sandbox\domain\service\SandboxExecutionServiceTest.class
-com\huixue\sandbox\infrastructure\docker\DockerContainerManagerTest.class
-com\huixue\sandbox\api\dto\DtoValidationTest.class

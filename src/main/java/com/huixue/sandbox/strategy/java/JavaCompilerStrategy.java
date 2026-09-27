@@ -3,23 +3,30 @@ package com.huixue.sandbox.strategy.java;
 import com.huixue.sandbox.common.util.PathSanitizer;
 import com.huixue.sandbox.domain.model.CompileResult;
 import com.huixue.sandbox.domain.strategy.CompilerStrategy;
+import com.huixue.sandbox.infrastructure.docker.DockerContainerManager;
+import com.huixue.sandbox.infrastructure.docker.DockerExecResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.BufferedReader;
+import java.nio.file.Files;
 
 @Slf4j
 @Component("javaCompilerStrategy")
 public class JavaCompilerStrategy implements CompilerStrategy {
 
+    private final DockerContainerManager dockerContainerManager;
+
+    public JavaCompilerStrategy(DockerContainerManager dockerContainerManager) {
+        this.dockerContainerManager = dockerContainerManager;
+    }
+
     @Override
-    public CompileResult compile(String sourceCode, String workDir) {
+    public CompileResult compile(String sourceCode, String workDirHostPath, String containerId) {
         CompileResult result = new CompileResult();
-        File dir = new File(workDir);
+        File dir = new File(workDirHostPath);
         if (!dir.exists()) {
             dir.mkdirs();
         }
@@ -31,35 +38,37 @@ public class JavaCompilerStrategy implements CompilerStrategy {
         } catch (IOException e) {
             log.error("Failed to write source file", e);
             result.setSuccess(false);
-            result.setCompileError("系统错误：无法写入源码文件");
+            result.setCompileError("Failed to write source file");
             return result;
         }
 
         try {
-            ProcessBuilder pb = new ProcessBuilder("javac", "-J-Dfile.encoding=UTF-8", "-encoding", "UTF-8", fileName);
-            pb.directory(dir);
-            Process process = pb.start();
+            String[] cmd = {"sh", "-c", "javac -J-Duser.language=en -encoding UTF-8 Main.java 2> compile_err.txt"};
+            DockerExecResult execResult = dockerContainerManager.execInContainer(containerId, cmd, 10000);
 
-            StringBuilder errorOutput = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream(), "UTF-8"))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    errorOutput.append(line).append("\n");
-                }
+            if (execResult.isTimeout()) {
+                result.setSuccess(false);
+                result.setCompileError("Compile timeout");
+                return result;
             }
 
-            int exitCode = process.waitFor();
-            if (exitCode == 0) {
+            if (execResult.getExitCode() == 0) {
                 result.setSuccess(true);
                 result.setExecuteTarget("Main");
             } else {
                 result.setSuccess(false);
-                result.setCompileError(PathSanitizer.sanitize(errorOutput.toString()));
+                File errFile = new File(dir, "compile_err.txt");
+                if (errFile.exists()) {
+                    String error = Files.readString(errFile.toPath());
+                    result.setCompileError(PathSanitizer.sanitize(error));
+                } else {
+                    result.setCompileError("Compile failed");
+                }
             }
         } catch (Exception e) {
             log.error("Compile process failed", e);
             result.setSuccess(false);
-            result.setCompileError("系统错误：编译进程异常");
+            result.setCompileError("Compile process failed");
         }
 
         return result;

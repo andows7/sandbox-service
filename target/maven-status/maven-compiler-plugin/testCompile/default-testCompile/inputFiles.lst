@@ -1,7 +1,0 @@
-D:\Code\sandbox-service\src\test\java\com\huixue\sandbox\api\controller\SandboxControllerTest.java
-D:\Code\sandbox-service\src\test\java\com\huixue\sandbox\api\dto\DtoValidationTest.java
-D:\Code\sandbox-service\src\test\java\com\huixue\sandbox\common\util\PathSanitizerTest.java
-D:\Code\sandbox-service\src\test\java\com\huixue\sandbox\domain\service\SandboxExecutionServiceTest.java
-D:\Code\sandbox-service\src\test\java\com\huixue\sandbox\infrastructure\docker\DockerContainerManagerTest.java
-D:\Code\sandbox-service\src\test\java\com\huixue\sandbox\infrastructure\pool\ContainerPoolTest.java
-D:\Code\sandbox-service\src\test\java\com\huixue\sandbox\JavaStrategyTest.java

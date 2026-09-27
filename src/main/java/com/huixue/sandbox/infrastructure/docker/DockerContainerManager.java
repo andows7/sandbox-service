@@ -2,108 +2,92 @@ package com.huixue.sandbox.infrastructure.docker;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
-import com.github.dockerjava.api.command.PullImageResultCallback;
+import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.Bind;
-import com.github.dockerjava.api.model.Capability;
-import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.Volume;
-import com.huixue.sandbox.config.DockerProperties;
+import com.github.dockerjava.api.command.PullImageResultCallback;
+import com.github.dockerjava.api.command.BuildImageResultCallback;
+import com.github.dockerjava.core.command.ExecStartResultCallback;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
-import jakarta.annotation.PostConstruct;
-import java.util.List;
+import java.io.File;
+import java.util.Collections;
 
 @Slf4j
 @Component
 public class DockerContainerManager {
 
     private final DockerClient dockerClient;
-    private final DockerProperties dockerProperties;
 
-    public DockerContainerManager(DockerClient dockerClient, DockerProperties dockerProperties) {
+    public DockerContainerManager(DockerClient dockerClient) {
         this.dockerClient = dockerClient;
-        this.dockerProperties = dockerProperties;
-    }
-
-    @PostConstruct
-    public void init() {
-        cleanZombieContainers();
-    }
-
-    public void cleanZombieContainers() {
-        log.info("Cleaning up zombie sandbox containers...");
-        try {
-            List<Container> containers = dockerClient.listContainersCmd().withShowAll(true).exec();
-            for (Container container : containers) {
-                // Remove containers created by sandbox
-                if (container.getNames() != null && container.getNames().length > 0) {
-                    for (String name : container.getNames()) {
-                        if (name.startsWith("/sandbox-exec-")) {
-                            log.info("Removing zombie container: {}", name);
-                            dockerClient.removeContainerCmd(container.getId())
-                                    .withForce(true)
-                                    .exec();
-                            break;
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.error("Failed to clean zombie containers", e);
-        }
     }
 
     public String createContainer(DockerContainerSpec spec) {
         try {
-            return doCreateContainer(spec);
+            dockerClient.inspectImageCmd(spec.getImage()).exec();
         } catch (NotFoundException e) {
-            log.warn("Image {} not found locally. Attempting to pull...", spec.getImage());
-            try {
-                dockerClient.pullImageCmd(spec.getImage())
-                        .exec(new PullImageResultCallback())
-                        .awaitCompletion();
-                log.info("Successfully pulled image: {}", spec.getImage());
-                return doCreateContainer(spec);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while pulling image " + spec.getImage(), ie);
+            synchronized (spec.getImage().intern()) {
+                try {
+                    dockerClient.inspectImageCmd(spec.getImage()).exec();
+                } catch (NotFoundException e2) {
+                    if (StringUtils.isNotBlank(spec.getBuildDirHostPath())) {
+                        File buildDir = new File(spec.getBuildDirHostPath());
+                        if (buildDir.exists() && buildDir.isDirectory()) {
+                            log.warn("Image {} not found locally. Building from {}...", spec.getImage(), spec.getBuildDirHostPath());
+                            try {
+                                String imageId = dockerClient.buildImageCmd(buildDir)
+                                        .withTags(Collections.singleton(spec.getImage()))
+                                        .exec(new BuildImageResultCallback())
+                                        .awaitImageId();
+                                log.info("Successfully built image {}: {}", spec.getImage(), imageId);
+                            } catch (Exception ex) {
+                                log.error("Failed to build image {}", spec.getImage(), ex);
+                                throw new RuntimeException(ex);
+                            }
+                        } else {
+                            log.error("Build directory {} does not exist!", spec.getBuildDirHostPath());
+                            throw new RuntimeException("Build directory not found: " + spec.getBuildDirHostPath());
+                        }
+                    } else {
+                        log.warn("Image {} not found locally. Attempting to pull...", spec.getImage());
+                        try {
+                            dockerClient.pullImageCmd(spec.getImage())
+                                    .exec(new PullImageResultCallback())
+                                    .awaitCompletion();
+                            log.info("Successfully pulled image: {}", spec.getImage());
+                        } catch (Exception ex) {
+                            log.error("Failed to pull image {}", spec.getImage(), ex);
+                            throw new RuntimeException(ex);
+                        }
+                    }
+                }
             }
         }
-    }
-
-    private String doCreateContainer(DockerContainerSpec spec) {
-        String containerName = "sandbox-exec-" + System.currentTimeMillis() + "-" + (int)(Math.random() * 1000);
 
         HostConfig hostConfig = HostConfig.newHostConfig()
-                .withMemory(spec.getMemoryLimitMb() * 1024 * 1024L)
-                .withMemorySwap(spec.getMemoryLimitMb() * 1024 * 1024L) // Disable swap by setting it equal to memory
+                .withMemory(spec.getMemoryLimitMb() * 1024L * 1024L)
                 .withCpuCount((long) spec.getCpuCount())
                 .withPidsLimit((long) spec.getPidLimit())
-                .withNetworkMode("none") // No network
-                .withCapDrop(Capability.ALL) // Drop all capabilities
-                .withBinds(new Bind(spec.getWorkDirHostPath(), new Volume(spec.getWorkDirContainerPath())))
-                .withReadonlyRootfs(true); // Optional: readonly root fs
+                .withNetworkMode("none")
+                .withBinds(new Bind(spec.getWorkDirHostPath(), new Volume(spec.getWorkDirContainerPath())));
 
-        CreateContainerResponse containerResponse = dockerClient.createContainerCmd(spec.getImage())
-                .withName(containerName)
+        CreateContainerResponse response = dockerClient.createContainerCmd(spec.getImage())
                 .withHostConfig(hostConfig)
+                .withWorkingDir(spec.getWorkDirContainerPath())
                 .withNetworkDisabled(true)
                 .withAttachStdin(true)
                 .withAttachStdout(true)
                 .withAttachStderr(true)
                 .withTty(true)
-                .withUser("1000:1000") // Run as non-root
-                .withWorkingDir(spec.getWorkDirContainerPath())
-                // Ensure it stays open for interaction
-                .withStdinOpen(true)
-                .withCmd("/bin/sh")
                 .exec();
 
-        String containerId = containerResponse.getId();
-        log.info("Created container: {} (ID: {})", containerName, containerId);
+        String containerId = response.getId();
+        log.info("Created container: {}", containerId);
         return containerId;
     }
 
@@ -114,12 +98,51 @@ public class DockerContainerManager {
 
     public void stopAndRemoveContainer(String containerId) {
         try {
-            dockerClient.removeContainerCmd(containerId)
-                    .withForce(true) // force kills and removes
-                    .exec();
+            InspectContainerResponse inspect = dockerClient.inspectContainerCmd(containerId).exec();
+            if (Boolean.TRUE.equals(inspect.getState().getRunning())) {
+                dockerClient.stopContainerCmd(containerId).exec();
+                log.info("Stopped container: {}", containerId);
+            }
+            dockerClient.removeContainerCmd(containerId).withForce(true).exec();
             log.info("Removed container: {}", containerId);
+        } catch (NotFoundException e) {
+            log.warn("Container {} already removed or not found", containerId);
         } catch (Exception e) {
-            log.error("Failed to remove container: {}", containerId, e);
+            log.error("Failed to stop and remove container {}", containerId, e);
         }
+    }
+
+    public DockerExecResult execInContainer(String containerId, String[] cmd, long timeoutMs) {
+        DockerExecResult result = new DockerExecResult();
+        long start = System.currentTimeMillis();
+        
+        try {
+            String execId = dockerClient.execCreateCmd(containerId)
+                    .withCmd(cmd)
+                    .withAttachStdout(true)
+                    .withAttachStderr(true)
+                    .exec()
+                    .getId();
+
+            boolean completed = dockerClient.execStartCmd(execId)
+                    .exec(new ExecStartResultCallback())
+                    .awaitCompletion(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+            
+            result.setCostTimeMs(System.currentTimeMillis() - start);
+
+            if (!completed) {
+                result.setTimeout(true);
+                return result;
+            }
+            
+            result.setTimeout(false);
+            result.setExitCode(dockerClient.inspectExecCmd(execId).exec().getExitCodeLong().intValue());
+            
+        } catch (Exception e) {
+            log.error("Failed to exec in container {}", containerId, e);
+            result.setExitCode(-1);
+            result.setCostTimeMs(System.currentTimeMillis() - start);
+        }
+        return result;
     }
 }
