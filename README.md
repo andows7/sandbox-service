@@ -1,14 +1,14 @@
-<div align="center">
+﻿<div align="center">
   <h1>慧学 一体化教学平台 - 代码执行沙箱服务 (Sandbox Service)</h1>
   <p>一个基于 Spring Boot 3 与 Docker 实现的高效、安全、多语言代码评测沙箱</p>
 </div>
 
 ## 📖 项目介绍
 
-`sandbox-service` 是“慧学”一体化教学平台中负责**在线代码判题与执行**的核心微服务。
+`sandbox-service` 是“慧学”一体化教学平台中负责 **在线代码判题与执行** 的核心微服务。
 系统通过接收前端学生提交的代码与测试用例，在隔离的 Docker 容器中进行编译与执行，并实时捕获标准输出、内存与时间消耗，给出准确的判题结果（AC, WA, TLE, MLE, CE, RE）。
 
-为了解决突发流量与 Docker 容器创建的耗时问题，系统自主设计并实现了**预热容器池（Container Pool）**，并通过 `MEMORY` 引擎对容器生命周期及执行流水进行高速存取与审计。
+为了解决突发流量下 Docker 容器创建的耗时问题，系统自主设计并实现了 **预热容器池（Container Pool）**，并通过 `MEMORY` 引擎对容器生命周期及执行流水进行高速存取与审计。
 
 ## ✨ 核心特性
 
@@ -52,7 +52,7 @@ sandbox-service/
 - JDK 17
 - Maven 3.9+
 - Docker Engine (必须)
-- MySQL 8.0 及 Nacos 2.x (可通过网关统一提供)
+- MySQL 8.0 与 Nacos 2.x (可通过网关统一提供)
 
 ### 方式一：Windows/Mac 本地源码启动 (开发调试)
 
@@ -61,78 +61,71 @@ sandbox-service/
    cd sandbox-service
    ```
 2. 确保本地 `application.yml` 中的 Nacos 和 MySQL 地址已指向可用环境。
-3. **重要（针对 Windows 用户）**：请打开 Docker Desktop 设置，在 General 选项卡中勾选 `Expose daemon on tcp://localhost:2375 without TLS` 并重启 Docker。
-4. 执行 Maven 编译与打包：
+3. 执行 Maven 编译与打包：
    ```bash
    mvn clean package -DskipTests
    ```
-5. 启动应用：
+4. 启动应用：
    ```bash
    java -jar target/sandbox-service-1.0.0-SNAPSHOT.jar
    ```
 
-### 方式二：Linux 服务器完整部署指南 (生产环境)
+### 方式二：部署到 Ubuntu 2C2G 服务器 (轻量级生产环境)
 
-本指南适用于在 Ubuntu/CentOS 等标准 Linux 服务器上完整部署沙箱服务，采用 Docker Compose 及 DooD (Docker-out-of-Docker) 架构。
+由于 2C2G (2核2G) 的服务器资源非常紧张，必须对服务进行内存压榨和连接数限制，否则容易触发 Linux OOM (Out Of Memory) 导致服务被强杀。
 
-#### 1. 环境准备与依赖安装
-确保服务器已安装 `Docker` 及 `Docker Compose`（V2 版本）。
+**核心建议**：
+- 请确保 MySQL 和 Nacos 部署在**另外的服务器**上，不要将它们与 Sandbox 服务挤在同一台 2C2G 服务器内。
+- Docker 的 Sandbox 预热容器池默认占用内存较多，在资源极度受限时，可以通过配置文件缩减预热容器数量。
+
+#### 1. 环境准备 (安装 JDK 与 Docker)
+确保 2C2G 服务器已安装 `JDK 17` 和 `Docker`：
 ```bash
-# Ubuntu/Debian 示例
+# 更新 apt 缓存
 sudo apt-get update
+
+# 安装 OpenJDK 17
+sudo apt-get install -y openjdk-17-jdk
+
+# 安装 Docker Engine
 sudo apt-get install -y docker.io docker-compose-plugin
-
-# 启动 Docker 并设置开机自启
 sudo systemctl enable --now docker
+
+# 将当前用户加入 docker 组 (避免 sudo)
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
-#### 2. 基础镜像预热 (防超时拦截)
-为防止首次收到学生代码执行请求时，因临时下载镜像耗时过长导致判题超时 (TLE)，建议在 Linux 宿主机上提前拉取环境基础镜像：
+#### 2. 提前拉取基础镜像
+沙箱执行代码依赖基础环境，建议提前通过清华镜像源或者默认源拉取，避免首次判题超时：
 ```bash
-sudo docker pull openjdk:17-jdk-slim
-sudo docker pull gcc:11.4.0
-sudo docker pull python:3.9-slim
+sudo docker pull ubuntu:22.04
 ```
 
-#### 3. 拉取项目与配置修改
+#### 3. 编译打包与上传
+在**本地开发机**上，打包出 jar 文件：
 ```bash
-# 下载源码到服务器，或直接上传预编译的 jar 包及 docker-compose.yml
-git clone <your-repository-url> sandbox-service
-cd sandbox-service
-
-# 根据生产环境实际情况，修改 docker-compose.yml 中的环境变量
-# 务必替换：SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR 等
-vi docker-compose.yml
+mvn clean package -DskipTests
 ```
+将 `target/sandbox-service-1.0.0-SNAPSHOT.jar` 以及项目根目录的 `docker-env` 文件夹，一起上传到 Ubuntu 2C2G 服务器上的同一个目录下（例如 `/opt/sandbox/`）。
 
-#### 4. 授权 Docker Socket (关键步骤)
-沙箱服务本身运行在容器内，并需要调用宿主机的 Docker Daemon 来创建“兄弟容器”执行不可信代码，因此必须挂载 `/var/run/docker.sock`。
-如果容器启动后报 `Permission denied` 错误，需确保宿主机 socket 权限足够：
+#### 4. 限制内存启动服务
+登录到 Ubuntu 2C2G 服务器，进入上传目录，使用 JVM 内存参数严格限制 Java 进程内存（最大 512MB）：
 ```bash
-sudo chmod 666 /var/run/docker.sock
+cd /opt/sandbox/
+
+# 覆盖配置项：指定 Nacos/MySQL 地址，并把容器池的核心数量从 10 降到 3，最大数量降到 10，节省 Docker 内存开销
+java -Xms256m -Xmx512m -jar sandbox-service-1.0.0-SNAPSHOT.jar \
+  --spring.cloud.nacos.discovery.server-addr=192.168.1.100:8848 \
+  --spring.cloud.nacos.config.server-addr=192.168.1.100:8848 \
+  --spring.datasource.url="jdbc:mysql://192.168.1.100:3306/huixue_sandbox?useUnicode=true&characterEncoding=utf-8" \
+  --sandbox.docker.pool.core-size=3 \
+  --sandbox.docker.pool.max-size=10
 ```
+*(注意：请将 `192.168.1.100` 替换为你真实的 Nacos 和 MySQL 服务器地址)*
 
-#### 5. 构建与后台运行服务
-在项目根目录下，使用 Compose 进行镜像构建与后台部署：
-```bash
-# 编译并以后台模式启动服务
-sudo docker compose up -d --build
-
-# 检查服务运行状态及端口映射 (默认暴露宿主机的 8084 端口)
-sudo docker compose ps
-```
-
-#### 6. 日志监控与日常维护
-```bash
-# 实时追踪沙箱服务运行日志，确认成功注册到 Nacos 且无报错
-sudo docker compose logs -f sandbox-service
-
-# 重启沙箱服务
-sudo docker compose restart sandbox-service
-
-# 停止并移除沙箱容器
-sudo docker compose down
-```
+启动后，访问以下链接即可查看 API 接口调试页面：
+`http://<你的服务器IP>:8084/swagger-ui/`
 
 ## 📖 文档指南
 
