@@ -1,0 +1,64 @@
+spring:
+  application:
+    name: sandbox-service
+  profiles:
+    active: dev
+  config:
+    import:
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yml
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yml
+
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/huixue_sandbox?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: root # Replace in production or move to Nacos
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
+
+server:
+  port: 8084
+
+
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  global-config:
+    db-config:
+      id-type: assign_uuid
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+sandbox:
+  docker:
+    host: ${SANDBOX_DOCKER_HOST:npipe:////./pipe/docker_engine}
+    cpu-count: 1
+    memory-mb: 256
+    pid-limit: 64
+    max-execution-time-ms: 10000
+    pool:
+      core-size: 10
+      max-size: 50
