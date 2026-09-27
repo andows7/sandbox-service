@@ -5,7 +5,7 @@
 
 ### 🚀 在线调试接口 (Swagger UI)
 开发或本地调试时，可以通过以下链接直接访问交互式 API 文档并调试接口：
-- **Swagger UI 界面**: [http://localhost:8084/swagger-ui/](http://localhost:8084/swagger-ui/)
+- **Swagger UI 界面**: [http://localhost:8084/swagger-ui/index.html](http://localhost:8084/swagger-ui/index.html)
 - **OpenAPI JSON 描述**: [http://localhost:8084/v3/api-docs](http://localhost:8084/v3/api-docs)
 
 ## 2. 接口列表
@@ -19,9 +19,8 @@
 - X-Trace-Id: (String, Optional) 链路追踪ID，供微服务全链路排查问题使用。
 
 **请求格式 (Request Body)**:
-pplication/json
 
-`json
+```json
 {
   "submitId": "sub-123456",
   "language": "JAVA",
@@ -35,7 +34,7 @@
   "timeLimitMs": 1000,
   "memoryLimitMb": 256
 }
-`
+```
 
 **请求参数说明**:
 | 字段 | 类型 | 必填 | 描述 | 限制 |
@@ -50,9 +49,8 @@
 | memoryLimitMb | Integer | 否 | 内存限制(MB) | 16 ~ 256 之间，默认 256 |
 
 **响应格式 (Response Body)**:
-pplication/json
 
-`json
+```json
 {
   "code": 200,
   "msg": "执行成功",
@@ -70,7 +68,7 @@
     ]
   }
 }
-`
+```
 
 **响应状态枚举 (status)**:
 - AC - 答案正确 (Accepted)
