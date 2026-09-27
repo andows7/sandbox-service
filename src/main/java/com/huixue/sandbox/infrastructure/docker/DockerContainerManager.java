@@ -76,15 +76,20 @@ public class DockerContainerManager {
                 .withNetworkMode("none")
                 .withBinds(new Bind(spec.getWorkDirHostPath(), new Volume(spec.getWorkDirContainerPath())));
 
-        CreateContainerResponse response = dockerClient.createContainerCmd(spec.getImage())
+
+        var cmd = dockerClient.createContainerCmd(spec.getImage())
                 .withHostConfig(hostConfig)
                 .withWorkingDir(spec.getWorkDirContainerPath())
                 .withNetworkDisabled(true)
                 .withAttachStdin(true)
                 .withAttachStdout(true)
                 .withAttachStderr(true)
-                .withTty(true)
-                .exec();
+                .withTty(true);
+        if (StringUtils.isNotBlank(spec.getContainerName())) {
+            cmd.withName(spec.getContainerName());
+        }
+        CreateContainerResponse response = cmd.exec();
+
 
         String containerId = response.getId();
         log.info("Created container: {}", containerId);

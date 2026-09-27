@@ -55,7 +55,7 @@ class ContainerPoolTest {
             executor.submit(() -> {
                 try {
                     // Try to borrow
-                    PooledContainer container = containerPool.borrowContainer(5000);
+                    PooledContainer container = containerPool.borrowContainer(com.huixue.sandbox.common.enums.LanguageType.JAVA, 5000);
                     if (container != null) {
                         successCount.incrementAndGet();
                         // Simulate work

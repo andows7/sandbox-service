@@ -7,6 +7,7 @@ import lombok.Data;
 @Builder
 public class DockerContainerSpec {
     private String image;
+    private String containerName;
     private String buildDirHostPath;
     private String workDirHostPath;
     private String workDirContainerPath;

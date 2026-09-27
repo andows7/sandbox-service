@@ -46,7 +46,7 @@ class SandboxExecutionServiceTest {
         PooledContainer container = new PooledContainer();
         container.setContainerId("test-container-id");
         container.setWorkDirHostPath("/tmp/sandbox");
-        when(pool.borrowContainer(anyLong())).thenReturn(container);
+        when(pool.borrowContainer(any(), anyLong())).thenReturn(container);
 
         service = new SandboxExecutionService(
                 pool, auditMapper,
@@ -71,7 +71,7 @@ class SandboxExecutionServiceTest {
         CompileResult cr = new CompileResult();
         cr.setSuccess(true);
         cr.setExecuteTarget("Main");
-        when(javaCompiler.compile(anyString(), anyString())).thenReturn(cr);
+        when(javaCompiler.compile(anyString(), anyString(), anyString())).thenReturn(cr);
 
         ExecutionResult er = new ExecutionResult();
         er.setStatus(JudgeStatus.AC);
@@ -82,7 +82,7 @@ class SandboxExecutionServiceTest {
         tcr.setActualOutput("1");
         er.setTestCaseResults(Collections.singletonList(tcr));
         
-        when(javaExecutor.execute(anyString(), anyString(), any(), any())).thenReturn(er);
+        when(javaExecutor.execute(anyString(), anyString(), anyString(), any(), any())).thenReturn(er);
 
         SandboxExecuteResponse response = service.execute(request);
         assertEquals(JudgeStatus.AC, response.getStatus());
@@ -100,7 +100,7 @@ class SandboxExecutionServiceTest {
         CompileResult cr = new CompileResult();
         cr.setSuccess(false);
         cr.setCompileError("Main.java:1: error: expected ';'");
-        when(javaCompiler.compile(anyString(), anyString())).thenReturn(cr);
+        when(javaCompiler.compile(anyString(), anyString(), anyString())).thenReturn(cr);
 
         SandboxExecuteResponse response = service.execute(request);
         assertEquals(JudgeStatus.CE, response.getStatus());

@@ -87,21 +87,23 @@ public class ContainerPool {
         String buildDirName;
         switch (lang) {
             case JAVA:
-                image = "sandbox-java:1.0";
+                image = "sandbox-java-openjdk17:1.0";
                 buildDirName = "java";
                 break;
             case CPP:
-                image = "sandbox-cpp:1.0";
+                image = "sandbox-cpp-gcc11:1.0";
                 buildDirName = "cpp";
                 break;
             case PYTHON:
-                image = "sandbox-python:1.0";
+                image = "sandbox-python-python3.9:1.0";
                 buildDirName = "python";
                 break;
             default:
                 image = "ubuntu:22.04";
                 buildDirName = "";
         }
+
+        String containerName = "sandbox_" + lang.name().toLowerCase() + "_" + uuid.substring(0, 8);
 
         String buildDirHostPath = "";
         if (!buildDirName.isEmpty()) {
@@ -110,6 +112,7 @@ public class ContainerPool {
 
         DockerContainerSpec spec = DockerContainerSpec.builder()
                 .image(image)
+                .containerName(containerName)
                 .buildDirHostPath(buildDirHostPath)
                 .cpuCount(dockerProperties.getCpuCount())
                 .memoryLimitMb(dockerProperties.getMemoryMb())

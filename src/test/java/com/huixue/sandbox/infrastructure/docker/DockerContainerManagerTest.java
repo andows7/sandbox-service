@@ -15,8 +15,8 @@ class DockerContainerManagerTest {
         DockerClientFactory factory = new DockerClientFactory(properties);
         DockerClient dockerClient = factory.dockerClient();
         
-        DockerContainerManager manager = new DockerContainerManager(dockerClient, properties);
-        manager.init();
+        DockerContainerManager manager = new DockerContainerManager(dockerClient);
+        
 
         DockerContainerSpec spec = DockerContainerSpec.builder()
                 .image("openjdk:17-jdk-slim")
