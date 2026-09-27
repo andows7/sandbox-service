@@ -133,6 +133,7 @@ sudo docker compose restart sandbox-service
 # 停止并移除沙箱容器
 sudo docker compose down
 ```
+http://localhost:8084/swagger-ui/
 
 ## 📖 文档指南
 
