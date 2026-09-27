@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  sandbox-service:
+    build: .
+    container_name: sandbox-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      # If using Nacos in prod, replace below IPs with real Nacos server IP
+      - SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR=api-gateway:8848 
+      - SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR=api-gateway:8848
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-server:3306/huixue_sandbox?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+      - SANDBOX_DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      # Mount the Docker socket so the sandbox manager can spawn inner containers (Docker-out-of-Docker / sibling containers)
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: always
