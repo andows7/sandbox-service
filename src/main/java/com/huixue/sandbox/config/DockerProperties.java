@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @ConfigurationProperties(prefix = "sandbox.docker")
 public class DockerProperties {
-    private String host = "unix:///var/run/docker.sock";
+    private String host;
     private int cpuCount = 1;
     private int memoryMb = 256;
     private int pidLimit = 64;

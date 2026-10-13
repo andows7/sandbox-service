@@ -160,7 +160,7 @@ java -Xms256m -Xmx512m -jar sandbox-service-1.0.0-SNAPSHOT.jar \
 *(注意：请将 `192.168.1.100` 替换为你真实的 Nacos 和 MySQL 服务器地址)*
 
 启动后，访问以下链接即可查看 API 接口调试页面：
-`http://<你的服务器IP>:8084/swagger-ui/`
+`http://<你的服务器IP>:8084/swagger-ui/index.html`
 
 ## 📖 文档指南
 

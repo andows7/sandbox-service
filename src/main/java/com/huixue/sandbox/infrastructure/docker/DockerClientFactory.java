@@ -6,10 +6,12 @@ import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.transport.DockerHttpClient;
 import com.huixue.sandbox.config.DockerProperties;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
+@Slf4j
 @Configuration
 public class DockerClientFactory {
 
@@ -21,9 +23,21 @@ public class DockerClientFactory {
 
     @Bean
     public DockerClient dockerClient() {
-        DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost(dockerProperties.getHost())
-                .build();
+        DefaultDockerClientConfig.Builder configBuilder = DefaultDockerClientConfig.createDefaultConfigBuilder();
+
+        String configuredHost = dockerProperties.getHost();
+        boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+
+        if (configuredHost != null && !configuredHost.isBlank()) {
+            if (isWindows && configuredHost.startsWith("unix://")) {
+                log.warn("Unix socket '{}' is not supported on Windows. Falling back to default Windows Docker host.", configuredHost);
+            } else {
+                configBuilder.withDockerHost(configuredHost);
+            }
+        }
+
+        DockerClientConfig config = configBuilder.build();
+        log.info("Initialized Docker client with host: {}", config.getDockerHost());
 
         DockerHttpClient httpClient = new com.github.dockerjava.zerodep.ZerodepDockerHttpClient.Builder()
                 .dockerHost(config.getDockerHost())
