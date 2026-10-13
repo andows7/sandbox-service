@@ -54,7 +54,7 @@ springdoc:
 
 sandbox:
   docker:
-    host: ${SANDBOX_DOCKER_HOST:npipe:////./pipe/docker_engine}
+    host: ${SANDBOX_DOCKER_HOST:unix:///var/run/docker.sock}
     cpu-count: 1
     memory-mb: 256
     pid-limit: 64
