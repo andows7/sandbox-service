@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
   <h1>慧学 一体化教学平台 - 代码执行沙箱服务 (Sandbox Service)</h1>
   <p>一个基于 Spring Boot 3 与 Docker 实现的高效、安全、多语言代码评测沙箱</p>
 </div>
@@ -32,18 +32,53 @@
 
 ```text
 sandbox-service/
-├── docs/                             # 包含 API 文档与各阶段开发报告汇总
-├── src/main/java/com/huixue/sandbox/
-│   ├── api/                          # Controller 层与 DTO
-│   ├── common/                       # 枚举、异常处理、拦截器、工具类
-│   ├── config/                       # Docker、MyBatis、MVC 配置
-│   ├── domain/                       # 核心业务领域 (Service, Model, 策略模式抽象)
-│   ├── infrastructure/               # 基础设施层 (Docker客户端封装, 持久化Mapper, 容器池)
-│   ├── job/                          # 定时调度任务 (僵尸容器及日志清理)
-│   └── strategy/                     # 各种语言的编译及执行策略实现 (Java/Cpp/Python)
-├── Dockerfile                        # 项目应用 Docker 镜像构建文件
-├── docker-compose.yml                # 容器编排文件
-└── pom.xml                           # Maven 依赖与插件管理
+├── docker-env/                       # 多语言沙箱运行环境 Dockerfile 构建目录
+│   ├── cpp/Dockerfile                # C++ 环境 (Ubuntu 22.04 + GCC 11)
+│   ├── java/Dockerfile               # Java 环境 (Ubuntu 22.04 + OpenJDK 17)
+│   └── python/Dockerfile             # Python 环境 (Ubuntu 22.04 + Python 3.9)
+├── docs/                             # 项目设计与接口规范文档
+│   ├── Development_Reports.md        # 各阶段开发与重构报告汇总
+│   ├── sandbox-service-api.md        # API 接口规范与在线调试说明
+│   └── 慧学教学平台_代码执行沙箱服务_接口规范文档_v1.2.0.docx # Word 标准化规范文档
+├── sandbox_workdirs/                 # 宿主机与容器卷挂载工作目录 (按需生成与定时清理)
+├── src/
+│   ├── main/
+│   │   ├── java/com/huixue/sandbox/
+│   │   │   ├── SandboxServiceApplication.java # Spring Boot 应用启动主类
+│   │   │   ├── api/                  # 接口控制层与数据传输对象 (DTO)
+│   │   │   │   ├── controller/       # SandboxController (判题接口入口)
+│   │   │   │   └── dto/              # 请求、响应包装实体 (ApiResponse 等)
+│   │   │   ├── common/               # 全局通用组件
+│   │   │   │   ├── enums/            # 状态字典 (JudgeStatus: AC, WA, TLE, MLE, RE, CE 等)
+│   │   │   │   ├── exception/        # 业务异常及全局异常捕获 (GlobalExceptionHandler)
+│   │   │   │   ├── interceptor/      # TraceId 链路追踪拦截器
+│   │   │   │   └── util/             # 路径脱敏工具类与 TraceId 工具
+│   │   │   ├── config/               # 自动配置类 (Docker、MyBatis-Plus、WebMvc)
+│   │   │   ├── domain/               # 核心业务领域层
+│   │   │   │   ├── model/            # 核心业务模型与领域实体
+│   │   │   │   ├── service/          # SandboxExecutionService 判题核心编排服务
+│   │   │   │   └── strategy/         # 编译与执行策略接口抽象
+│   │   │   ├── infrastructure/       # 基础设施层
+│   │   │   │   ├── docker/           # DockerContainerManager 容器运行时交互与执行
+│   │   │   │   ├── persistence/      # 数据访问层与 MyBatis-Plus Mapper (审计流水)
+│   │   │   │   └── pool/             # 自研 ContainerPool 预热容器池与池化管理
+│   │   │   ├── job/                  # 定时任务 (僵尸容器与过期审计记录自动清理)
+│   │   │   └── strategy/             # 多语言策略具体实现
+│   │   │       ├── cpp/              # C++ 编译与隔离执行策略
+│   │   │       ├── java/             # Java 编译与隔离执行策略
+│   │   │       └── python/           # Python 脚本校验与隔离执行策略
+│   │   └── resources/
+│   │       ├── application.yml       # 核心服务配置 (Docker连接、容器池参数、Nacos、数据源)
+│   │       └── schema.sql            # 数据库初始化脚本 (MEMORY 引擎审计表结构)
+│   └── test/java/com/huixue/sandbox/ # 单元测试套件
+│       ├── JavaStrategyTest.java     # 6 种判题状态 (AC/WA/TLE/MLE/RE/CE) 策略级覆盖测试
+│       ├── api/                      # 接口与参数校验测试 (MockMvc)
+│       ├── common/                   # 路径脱敏等基础工具测试
+│       ├── domain/service/           # 判题核心调度服务集成单元测试
+│       └── infrastructure/           # Docker 客户端封装与容器池并发吞吐测试
+├── Dockerfile                        # 沙箱主服务镜像构建文件
+├── docker-compose.yml                # 容器化编排部署文件
+└── pom.xml                           # Maven 依赖与构建配置
 ```
 
 ## 🚀 部署步骤
