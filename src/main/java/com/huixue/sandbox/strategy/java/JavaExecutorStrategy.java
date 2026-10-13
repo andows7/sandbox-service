@@ -75,8 +75,13 @@ public class JavaExecutorStrategy implements ExecutorStrategy {
                 }
 
                 if (execResult.getExitCode() != 0) {
-                    executionResult.setStatus(JudgeStatus.RE);
-                    executionResult.setRuntimeError(PathSanitizer.sanitize(errorStr));
+                    if (execResult.getExitCode() == 137 || errorStr.contains("OutOfMemoryError")) {
+                        executionResult.setStatus(JudgeStatus.MLE);
+                        executionResult.setRuntimeError("Memory Limit Exceeded");
+                    } else {
+                        executionResult.setStatus(JudgeStatus.RE);
+                        executionResult.setRuntimeError(PathSanitizer.sanitize(errorStr));
+                    }
                     caseResult.setPassed(false);
                     caseResult.setErrorLine(extractErrorLine(errorStr));
                     caseResults.add(caseResult);

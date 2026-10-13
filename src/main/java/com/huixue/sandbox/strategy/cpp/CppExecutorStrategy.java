@@ -73,8 +73,13 @@ public class CppExecutorStrategy implements ExecutorStrategy {
                 }
 
                 if (execResult.getExitCode() != 0) {
-                    executionResult.setStatus(JudgeStatus.RE);
-                    executionResult.setRuntimeError(PathSanitizer.sanitize(errorStr));
+                    if (execResult.getExitCode() == 137 || errorStr.contains("std::bad_alloc")) {
+                        executionResult.setStatus(JudgeStatus.MLE);
+                        executionResult.setRuntimeError("Memory Limit Exceeded");
+                    } else {
+                        executionResult.setStatus(JudgeStatus.RE);
+                        executionResult.setRuntimeError(PathSanitizer.sanitize(errorStr));
+                    }
                     caseResult.setPassed(false);
                     caseResults.add(caseResult);
                     break;
