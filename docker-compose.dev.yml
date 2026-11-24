@@ -1,0 +1,28 @@
+services:
+  sandbox-service:
+    build: ./backend
+    ports: ["127.0.0.1:8084:8084"]
+    mem_limit: 384m
+    cpus: 1.0
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      NACOS_ADDR: ${NACOS_ADDR:-nacos:8848}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://mysql-server:3306/huixue_sandbox?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-root}
+      SANDBOX_DOCKER_HOST: unix:///var/run/docker.sock
+      SANDBOX_WORK_DIR: /app/sandbox_workdirs
+      SANDBOX_HOST_WORK_DIR: ${SANDBOX_HOST_WORK_DIR:?Set absolute Docker-host project path}/backend/sandbox_workdirs
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./backend/sandbox_workdirs:/app/sandbox_workdirs
+  frontend:
+    build: ./frontend
+    ports: ["127.0.0.1:5173:5173"]
+    environment:
+      BACKEND_TARGET: http://sandbox-service:8084
+    depends_on: [sandbox-service]
+networks:
+  default:
+    external: true
+    name: ${PLATFORM_NETWORK:-huixue_default}

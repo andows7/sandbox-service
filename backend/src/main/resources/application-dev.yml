@@ -1,0 +1,13 @@
+# Local platform development: direct frontend/backend calls, Nacos registration remains enabled.
+sandbox:
+  gateway:
+    require-user: false
+spring:
+  config:
+    import: optional:nacos:${spring.application.name}-dev.yml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      config:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}

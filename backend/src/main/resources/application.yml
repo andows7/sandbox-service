@@ -1,0 +1,75 @@
+spring:
+  application:
+    name: sandbox-service
+  profiles:
+    default: dev
+    group:
+      demo: dev
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+      config:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+        file-extension: yml
+
+  datasource:
+    hikari:
+      minimum-idle: 1
+      maximum-pool-size: 4
+    url: jdbc:mysql://127.0.0.1:3306/huixue_sandbox?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: root # Replace in production or move to Nacos
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
+
+server:
+  port: 8084
+  tomcat:
+    threads:
+      min-spare: 2
+      max: 20
+    accept-count: 20
+    max-connections: 64
+    max-http-form-post-size: 2MB
+
+
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  global-config:
+    db-config:
+      id-type: assign_uuid
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+sandbox:
+  docker:
+    host: ${SANDBOX_DOCKER_HOST:}
+    cpu-count: 1
+    memory-mb: 256
+    pid-limit: 64
+    max-execution-time-ms: 10000
+    pool:
+      core-size: ${SANDBOX_POOL_CORE_SIZE:0}
+      max-size: ${SANDBOX_POOL_MAX_SIZE:2}
+      max-total: ${SANDBOX_POOL_MAX_TOTAL:4}
+    work-dir: ${SANDBOX_WORK_DIR:${user.dir}/sandbox_workdirs}
+    host-work-dir: ${SANDBOX_HOST_WORK_DIR:}

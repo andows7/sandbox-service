@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Sandbox Dev (legacy demo)" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="sandbox-service" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.huixue.sandbox.SandboxServiceApplication" />
+    <option name="ACTIVE_PROFILES" value="dev" />
+    <envs><env name="NACOS_ADDR" value="127.0.0.1:8848" /></envs>
+    <option name="VM_PARAMETERS" value="-Dfile.encoding=UTF-8 -Xms32m -Xmx192m -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -Xss512k" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/backend" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>
